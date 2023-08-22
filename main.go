@@ -6,15 +6,20 @@ import (
 	"log"
 	"os"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Album struct {
-	ID     int64
-	Title  string
-	Artist string
-	Price  float32
+	ID int64 `json:"id"`
+	AlbumData
+}
+
+type AlbumData struct {
+	Title  string  `json:"title"`
+	Artist string  `json:"artist"`
+	Price  float32 `json:"price"`
 }
 
 var db_pool *pgxpool.Pool
@@ -26,7 +31,16 @@ func main() {
 		log.Fatal(ping_err)
 	}
 	defer db_pool.Close()
+	// tryAlbumsDb()
+	router := gin.Default()
+	router.GET("/albums", getAlbums)
+	router.GET("/albums/:id", getAlbumsById)
+	router.POST("albums", postAlbum)
 
+	router.Run("localhost:8000")
+}
+
+func tryAlbumsDb() {
 	var albums []Album
 
 	// var title string
@@ -56,7 +70,7 @@ func main() {
 	}
 	fmt.Printf("Album found: %v\n", alb)
 
-	affected, err := addAlbum(Album{
+	affected, err := addAlbum(AlbumData{
 		Title:  "The Modern Sound of Betty Carter",
 		Artist: "Betty Carter",
 		Price:  49.99,
@@ -65,6 +79,26 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Rows Affected: %v\n", affected)
+}
+
+func allAlbums() ([]Album, error) {
+	var albums []Album
+
+	rows, err := db_pool.Query(context.Background(), "select * from album")
+	if err != nil {
+		return nil, fmt.Errorf("Albums query failed: %v\n", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, fmt.Errorf("Albums query row failed: %v\n", err)
+
+		}
+		albums = append(albums, alb)
+	}
+	return albums, nil
+
 }
 
 // albumsByArtist queries for albums that have the specified artist name.
@@ -103,7 +137,7 @@ func albumByID(id int64) (Album, error) {
 }
 
 // addAlbum adds the specified album to the database
-func addAlbum(alb Album) (int64, error) {
+func addAlbum(alb AlbumData) (int64, error) {
 	result, err := db_pool.Exec(context.Background(), "INSERT INTO album (title, artist, price) VALUES ($1, $2, $3)", alb.Title, alb.Artist, alb.Price)
 	if err != nil {
 		return 0, fmt.Errorf("addAlbum: %v", err)
